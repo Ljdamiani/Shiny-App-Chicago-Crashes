@@ -42,6 +42,11 @@ crash <- crash_raw %>%
                                          "Terca-feira", "Quarta-feira",
                                          "Quinta-feira", "Sexta-feira",
                                          "Sabado"))) %>%
+  mutate(posted_speed_limit = ifelse(posted_speed_limit <= 20, "[0, 20]",
+                              ifelse(posted_speed_limit <= 40, "(20, 40]",
+                              ifelse(posted_speed_limit <= 60, "(40, 60]", "(60, 80]")))) %>%
+  mutate(posted_speed_limit = factor(posted_speed_limit,  
+                              levels = c("[0, 20]", "(20, 40]", "(40, 60]", "(60, 80]"))) %>%
   na.omit() # sem NAs 
 
 # Imagem de chicago_neigh #c(lon = -87.66161, lat = 41.84741)
@@ -57,32 +62,6 @@ crash <- crash %>%
   mutate(Long = as.numeric(as.character(longitude)),
          Lat = as.numeric(as.character(latitude))) %>%
   st_as_sf(coords = c("Long", "Lat"), crs = st_crs(chicago_neigh))
-
-# Acidentes por bairro
-crash$neigh = ""; chicago_neigh$crash = 0
-for (i in 1:nrow(crash)){
-  
-  # Coordenadas
-  long = crash$longitude[i]
-  lat = crash$latitude[i]
-  
-  # Verificando qual bairro o ponto pertence
-  for (k in 1:98){
-    
-    # Coordenadas do bairro
-    neigh_coords = st_bbox(chicago_neigh$geometry[k])
-    
-    if (neigh_coords["xmin"] < long && long < neigh_coords["xmax"] &&
-        neigh_coords["ymin"] < lat && lat < neigh_coords["ymax"]){
-      
-      crash$neigh[i] = chicago_neigh$pri_neigh[k]
-      chicago_neigh$crash[k] = chicago_neigh$crash[k] + 1
-      
-      break
-      
-    }
-  }
-}
 
 # Limpa todos menos os importantes
 rm(list=setdiff(ls(),c('crash', 'chicago_city', 'chicago_neigh', 'chi_basemap')))
