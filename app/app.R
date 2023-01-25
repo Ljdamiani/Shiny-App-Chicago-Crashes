@@ -42,9 +42,6 @@ ui <- dashboardPage(
                menuSubItem("Month", tabName = "Month"),
                menuSubItem("Day of Week", tabName = "Day"),
                menuSubItem("Hours", tabName = "Hour")),
-      menuItem("Where?", tabName = "Where?", icon = icon("crosshairs"),
-               menuSubItem("Neighbourhood", tabName = "Neighbourhood"),
-               menuSubItem("Street", tabName = "Street")),
       menuItem("How?", tabName = "How?", icon = icon("exclamation"),
                menuSubItem("Speed Limit", tabName = "Speed"),
                menuSubItem("Damage", tabName = "Damage"),
@@ -145,42 +142,6 @@ ui <- dashboardPage(
               )
             )
     ),
-    tabItem("Where?",
-            tabItems(
-              tabItem("Neighbourhood",
-                      fluidPage(
-                        titlePanel("Variação dos Acidentes Conforme os Bairros de Chicago"), 
-                        p("Abaixo podemos verificar os acidentes através dos bairros.",
-                          style = "font-size:20px"), br(), br(),
-                        fluidRow(
-                          column(4,
-                                 box(
-                                   title = "Filtros", solidHeader = T, status = "primary", width = 12, 
-                                   "Selecione os filtros que serão aplicados.", br(),
-                                   selectInput("FeridosBairro", "Acidentes com Feridos?", choices = c("Sim", "Não")),
-                                   dateRangeInput("DataBairro",
-                                                  label = "Escolha o Período de Tempo:",
-                                                  start = date(min(crash$crash_date)),
-                                                  end = date(max(crash$crash_date)),
-                                                  min = date(min(crash$crash_date)), 
-                                                  max = date(max(crash$crash_date)),
-                                                  separator = " a "
-                                                  )
-                                 ), br(),
-                                 box(title = "Acidentes Por Bairro", solidHeader = T, status = "primary",
-                                     plotOutput("chicago_bairro1", height = "300"), width = 12)
-                          ),
-                          column(8, 
-                                 box(title = "Acidentes em Chicago por Bairro", solidHeader = T, status = "primary",
-                                     plotOutput("chicago_bairro2", width = "100%", height = "600"), width = 12),
-                          )
-                        )
-                      )
-              ),
-              tabItem("Street"
-              )
-            )
-    ),
     tabItem("How?", 
             tabItems(
               tabItem("Speed",
@@ -274,7 +235,7 @@ ui <- dashboardPage(
                                                choices = sort(unique(crash$first_crash_type)))
                                  ), br(),
                                  box(title = "Acidentes Por Tipo de Primeira Colisão", solidHeader = T, status = "primary",
-                                     plotOutput("chicago_type1", height = "300"), width = 12)
+                                     plotOutput("chicago_type1", height = "500"), width = 12)
                           ),
                           column(8, 
                                  box(title = "Acidentes em Chicago", solidHeader = T, status = "primary",
@@ -306,8 +267,6 @@ server <- function(input, output) {
       filter(latitude > 0 & 
                injuries == feridos_month) %>%
       mutate(mes = month(crash_date, label = T, abbr = T))
-    
-    
     
     # Hist
     ggplot(month, aes(x = sort(mes))) + 
@@ -385,12 +344,14 @@ server <- function(input, output) {
     hour <- crash %>%
       filter(latitude > 0 & 
                injuries == feridos_hour) %>%
-      mutate(hora = crash_hour)
+      mutate(hora = ifelse(crash_hour <= 6, "<= 6",
+                    ifelse(crash_hour <= 12, "<= 12",
+                    ifelse(crash_hour <= 18, "<= 18", "<= 24")))) %>%
+      mutate(hora = factor(hora, levels = c("<= 6", "<= 12", "<= 18", "<= 24")))
     
     # Hist
     ggplot(hour, aes(x = (sort(hora)))) + 
       geom_bar(fill = "tomato") +
-      scale_x_continuous(breaks = hour$hora) +
       labs(x = "Hora do dia", y = "Acidentes") +
       theme_minimal()
     
@@ -414,68 +375,6 @@ server <- function(input, output) {
       coord_sf(crs = st_crs(4326))
     
   })
-  
-  ###### Neighbourhood
-  
-  output$chicago_bairro1 <- renderPlot({
-    
-    if(input$FeridosBairro == "Sim"){feridos_bairro = "injuries"}else{feridos_bairro="none"}
-    inicio <- input$DataBairro[1]
-    fim <- input$DataBairro[2]
-    
-    # Bairro
-    bairro <- crash %>%
-      filter(latitude > 0 & 
-               injuries == feridos_bairro &
-               crash_date <= input$DataBairro[2] & crash_date >= input$DataBairro[1])
-    
-    # Hist
-    ggplot(bairro, aes(x = sort(neigh))) + 
-      geom_bar(fill = "orange") +
-      labs(x = "Bairros", y = "Acidentes") + 
-      theme_minimal()
-    
-  })
-  
-  output$chicago_bairro2 <- renderPlot({
-    
-    if(input$FeridosBairro == "Sim"){feridos_bairro = "injuries"}else{feridos_bairro="none"}
-    inicio <- input$DataBairro[1]
-    fim <- input$DataBairro[2]
-    
-    # Bairro
-    bairro <- crash %>%
-      filter(latitude > 0 & 
-               injuries == feridos_bairro &
-               crash_date <= fim & crash_date >= inicio) %>%
-      mutate(freq = 1) %>%
-      group_by(neigh) %>%
-      summarise(crash = sum(freq))
-    
-    # Mapa dos Acidentes Por Bairro - Interativo 
-    pal <- colorBin("YlOrRd", domain = bairro$crash)
-    
-    leaflet(chicago_neigh) %>%
-      addProviderTiles(providers$OpenStreetMap.Mapnik) %>% 
-      addPolygons(fillColor = ~pal(crash), 
-                  weight = 1.5,
-                  opacity = 1,
-                  fillOpacity = 0.7,
-                  color = "gray",
-                  highlight = highlightOptions(weight = 5,
-                                               color = "yellow",
-                                               fillOpacity = 0.7,
-                                               bringToFront = TRUE),
-                  label = sprintf("%s - Crashes: %s", chicago_neigh$pri_neigh, chicago_neigh$crash),
-                  labelOptions = labelOptions(style = list("font-weight" = "normal", padding = "3px 8px"),
-                                              textsize = "15px",
-                                              direction = "auto")) %>%
-      addLegend(pal = pal, values = ~crash, opacity = 0.7, title = NULL,
-                position = "bottomright")
-    
-  })
-  
-  ###### Street
   
   ###### Speed
   output$chicago_speed1 <- renderPlot({
@@ -548,7 +447,7 @@ server <- function(input, output) {
     # Mapa dos Acidentes com o valor de danos Acima
     ggmap(chi_basemap) +
       geom_sf(data = chicago_city, color = "red", alpha = 0, inherit.aes = FALSE) +
-      geom_sf(data = damage$geometry, size = 1.5, color = "deeppink4", inherit.aes = FALSE) +
+      geom_sf(data = damage$geometry, size = 1, color = "deeppink4", inherit.aes = FALSE) +
       coord_sf(crs = st_crs(4326))
     
   })
@@ -562,14 +461,14 @@ server <- function(input, output) {
     light <- crash %>%
       filter(latitude > 0 & 
                injuries == feridos_light) %>%
-      mutate(luz = lighting_condition)
+      mutate(luz = str_wrap(lighting_condition, 15))
     
     # Hist
     ggplot(light, aes(x = sort(luz))) + 
       geom_bar(fill = "tomato") +
       labs(x = "Condição de Luz no local", y = "Acidentes") + 
-      theme_minimal() +
-      theme(axis.text.x = element_text(angle = 90))
+      theme_minimal() + coord_flip() +
+      theme(axis.text.x = element_text(angle = 90)) 
     
   })
   
@@ -601,13 +500,13 @@ server <- function(input, output) {
     type <- crash %>%
       filter(latitude > 0 & 
                injuries == feridos_type) %>%
-      mutate(tipo = first_crash_type)
+      mutate(tipo = str_wrap(first_crash_type, 20))
     
     # Hist
     ggplot(type, aes(x = sort(tipo))) + 
       geom_bar(fill = "tomato") +
-      labs(x = "Tipo de primeira colisão", y = "Acidentes") + 
-      theme_minimal() +
+      labs(y = "Acidentes") + 
+      theme_minimal() + coord_flip() +
       theme(axis.text.x = element_text(angle = 90))
     
   })
